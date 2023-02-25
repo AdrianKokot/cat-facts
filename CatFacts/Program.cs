@@ -9,6 +9,7 @@ var services = new ServiceCollection();
 
 services.AddLogging(builder => builder.AddConsole())
         .Configure<LoggerFilterOptions>(options => options.MinLevel = LogLevel.Debug)
+        .AddHttpClient()
         .AddSingleton<IDatabaseWriter, TextFileDatabaseWriter>()
         .AddSingleton<ICatFactsService, CatFactsService>()
         .AddSingleton<Host>();
@@ -16,7 +17,4 @@ services.AddLogging(builder => builder.AddConsole())
 var host = services.BuildServiceProvider().GetService<Host>();
 var cancellationTokenRegistration = new CancellationTokenRegistration();
 
-if (host is not null)
-{
-    await host.Main(cancellationTokenRegistration.Token);
-}
+await (host ?? throw new ArgumentNullException(nameof(Host))).Main(cancellationTokenRegistration.Token);

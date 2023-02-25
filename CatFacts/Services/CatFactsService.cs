@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Json;
+using System.Text.Json;
 using CatFacts.Abstractions;
 using CatFacts.Entities;
 using CatFacts.Exceptions;
@@ -10,19 +11,19 @@ public sealed class CatFactsService : ICatFactsService
 {
     private const string GetFactRequestUri = "fact";
     private static readonly Uri BaseAddress = new("https://catfact.ninja");
+    private readonly IHttpClientFactory _clientFactory;
     private readonly ILogger<CatFactsService> _logger;
 
-    public CatFactsService(ILogger<CatFactsService> logger)
+    public CatFactsService(ILogger<CatFactsService> logger, IHttpClientFactory clientFactory)
     {
         _logger = logger;
+        _clientFactory = clientFactory;
     }
 
     public async Task<CatFact> GetRandomFact(CancellationToken cancellationToken = default)
     {
-        using var client = new HttpClient
-        {
-            BaseAddress = BaseAddress
-        };
+        using var client = _clientFactory.CreateClient(nameof(CatFactsService));
+        client.BaseAddress = BaseAddress;
 
         _logger.LogDebug("Sending request to {Address}{Path}",
             client.BaseAddress, GetFactRequestUri);
@@ -34,16 +35,23 @@ public sealed class CatFactsService : ICatFactsService
 
         if (!response.IsSuccessStatusCode)
         {
-            var responseError =
-                (await response.Content.ReadFromJsonAsync<object>(cancellationToken: cancellationToken))
-                ?.ToString() ?? response.StatusCode.ToString();
+            var responseError = await response.Content.ReadAsStringAsync(cancellationToken: cancellationToken);
 
             throw new CatFactRequestFailedException(responseError);
         }
 
-        var fact = await response.Content.ReadFromJsonAsync<CatFact>(cancellationToken: cancellationToken);
+        CatFact? fact;
+        
+        try
+        {
+            fact = await response.Content.ReadFromJsonAsync<CatFact>(cancellationToken: cancellationToken);
+        }
+        catch (JsonException e)
+        {
+            throw new CatFactRequestFailedException(e.Message);
+        }
 
-        if (fact is null) throw new CatFactRequestFailedException("Response was null.");
+        if (fact is null) throw new CatFactRequestFailedException("Response was null");
 
         return fact;
     }
